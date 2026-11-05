@@ -24,7 +24,7 @@ def test_config_dir_windows(monkeypatch, tmp_path):
 
 def test_config_dir_linux(monkeypatch, tmp_path):
     monkeypatch.delenv("SERIAL_WEDGE_DIR")
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(config.Path, "home", lambda: tmp_path)
     assert config.config_dir(platform="linux") == tmp_path / ".config" / "serial-wedge"
 
 

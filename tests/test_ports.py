@@ -1,4 +1,7 @@
+import sys
 from types import SimpleNamespace
+
+import pytest
 
 from serial_wedge import ports
 from serial_wedge.config import Config
@@ -70,6 +73,7 @@ def test_label():
     assert ports.label(NATIVE) == "COM1 — Puerto de comunicaciones"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="rutas POSIX")
 def test_posix_device_path_not_listed_but_existing(tmp_path):
     dev = tmp_path / "ttyFAKE"
     dev.write_text("")

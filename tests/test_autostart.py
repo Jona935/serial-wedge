@@ -84,7 +84,7 @@ def test_linux_desktop_file(tmp_path):
 
 
 def test_linux_default_dir(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(autostart.Path, "home", lambda: tmp_path)
     assert autostart.linux_autostart_dir() == tmp_path / ".config" / "autostart"
 
 
