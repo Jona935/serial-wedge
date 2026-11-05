@@ -77,6 +77,29 @@ def build_menu(cb: dict, *, status, paused, autostart) -> list[Item]:
     ]
 
 
+def _with_item(fn):
+    """pystray llama a text/checked con el MenuItem; nuestras funciones no lo usan."""
+    return lambda _item: fn()
+
+
+def _no_args(fn):
+    return lambda: fn()
+
+
+def to_pystray(items: list[Item], pystray) -> list:
+    out = []
+    for it in items:
+        if it.text is None:
+            out.append(pystray.Menu.SEPARATOR)
+            continue
+        text = _with_item(it.text) if callable(it.text) else it.text
+        checked = _with_item(it.checked) if it.checked else None
+        # pystray decide cómo llamar según el número de argumentos: siempre cero
+        action = _no_args(it.action) if it.action else None
+        out.append(pystray.MenuItem(text, action, enabled=it.enabled, checked=checked))
+    return out
+
+
 def settings_command() -> list[str]:
     if getattr(sys, "frozen", False):
         return [sys.executable, "--settings"]
@@ -165,14 +188,6 @@ class TrayApp:  # pragma: no cover - necesita bandeja del sistema real
     def run(self):
         import pystray
 
-        def convert(it: Item):
-            if it.text is None:
-                return pystray.Menu.SEPARATOR
-            text = (lambda _i, f=it.text: f()) if callable(it.text) else it.text
-            checked = (lambda _i, f=it.checked: f()) if it.checked else None
-            action = (lambda _icon, _i, f=it.action: f()) if it.action else None
-            return pystray.MenuItem(text, action, enabled=it.enabled, checked=checked)
-
         items = build_menu(
             {"toggle_pause": self._toggle_pause, "settings": self._settings, "log": self._log,
              "toggle_autostart": self._toggle_autostart, "quit": self._quit},
@@ -181,7 +196,7 @@ class TrayApp:  # pragma: no cover - necesita bandeja del sistema real
             autostart=autostart.is_autostart,
         )
         self.icon = pystray.Icon("serial-wedge", make_image("pausado", self.base), "Pistola Serial",
-                                 menu=pystray.Menu(*map(convert, items)))
+                                 menu=pystray.Menu(*to_pystray(items, pystray)))
 
         def setup(icon):
             icon.visible = True

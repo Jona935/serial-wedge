@@ -62,7 +62,8 @@ class WedgeService:
         if self.thread and self.thread is not threading.current_thread():
             self.thread.join(timeout)
         self._close()
-        log.info("Servicio detenido (%d códigos leídos)", self.count)
+        if self.thread:
+            log.info("Servicio detenido (%d códigos leídos)", self.count)
 
     def set_paused(self, paused: bool):
         with self._lock:

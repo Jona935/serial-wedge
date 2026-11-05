@@ -102,3 +102,15 @@ def test_notifier_first_connection_and_loss_rate_limited():
 
 def test_packaged_icon_exists():
     assert tray.ICON_PATH.is_file() and tray.base_image().size == (256, 256)
+
+
+def test_to_pystray_builds_real_menu_items():
+    pystray = __import__("pytest").importorskip("pystray")
+    items, calls = make_menu(paused=True, autostart=True)
+    menu = pystray.Menu(*tray.to_pystray(items, pystray))
+    real = [i for i in menu.items if i is not pystray.Menu.SEPARATOR]
+    assert [i.text for i in real][:2] == ["Estado: conectado", "Reanudar"]
+    assert real[0].enabled is False and real[4].checked is True
+    for i in real[1:]:
+        i(None)  # pystray llama a la acción con el icono
+    assert calls == ["toggle_pause", "settings", "log", "toggle_autostart", "quit"]
