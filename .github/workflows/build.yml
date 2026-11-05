@@ -1,0 +1,36 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias
+        run: pip install -e ".[dev]" pyinstaller
+      - name: Pruebas
+        run: pytest -q
+      - name: Compilar serial-wedge.exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name serial-wedge
+          --icon assets/serial-wedge.ico --paths src
+          --add-data "src/serial_wedge/assets;serial_wedge/assets"
+          --hidden-import pystray._win32 run.py
+      - name: Publicar versión
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "build-${{ github.run_number }}" dist/serial-wedge.exe
+          --title "Pistola Serial build ${{ github.run_number }}"
+          --notes "Compilación automática de ${{ github.sha }}"
