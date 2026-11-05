@@ -276,3 +276,97 @@ def test_never_writes_even_under_traffic(make):
         op.conns[0].feed(f"{i}\r\n".encode())
     wait_until(lambda: len(svc.typed) == 20)
     assert svc.state == "conectado"
+
+
+# -- datos para el Probador ------------------------------------------------------
+def scan(make, *chunks, n=1, **kw):
+    op = Opener()
+    svc = make(op, **kw)
+    wait_until(lambda: svc.state == "conectado")
+    for c in chunks:
+        op.conns[0].feed(c)
+    wait_until(lambda: status().get("codes_total") == n and status().get("last_typed_at"))
+    return svc, status()
+
+
+@pytest.mark.parametrize("raw,term", [(b"123\r\n", "CRLF"), (b"123\r", "CR"),
+                                      (b"123\n", "LF"), (b"123", "ninguno")])
+def test_status_terminator(make, raw, term):
+    _, st = scan(make, raw)
+    assert st["last_terminator"] == term and st["last_code"] == "123"
+
+
+def test_status_raw_fields(make):
+    _, st = scan(make, b"7501234567890\r\n")
+    assert st["last_raw_hex"] == "37 35 30 31 32 33 34 35 36 37 38 39 30 0d 0a"
+    assert st["last_raw_text"] == "7501234567890\\r\\n" and st["last_raw_len"] == 15
+    assert st["bytes_total"] == 15 and st["codes_total"] == 1
+    assert st["garbled"] is False and st["garbled_count"] == 0 and st["type_error"] is None
+    for k in ("last_code_at", "last_frame_at", "last_typed_at", "updated_ts"):
+        assert isinstance(st[k], float)
+    assert st["state"] == "conectado" and st["count"] == 1  # lo anterior sigue igual
+
+
+def test_status_raw_is_capped_to_64_bytes(make):
+    _, st = scan(make, b"9" * 100 + b"\r\n")
+    assert len(st["last_raw_hex"].split()) == 64 and st["last_raw_len"] == 102
+
+
+def test_status_garbled_high_bytes(make):
+    _, st = scan(make, b"\xe5\x9a\xff\x13A\r\n")
+    assert st["garbled"] is True and st["garbled_count"] == 1
+    assert "\\xff" in st["last_raw_text"] and "\\x13" in st["last_raw_text"]
+
+
+def test_status_garbled_clears_on_clean_frame(make):
+    _, st = scan(make, b"\xff\xfeA\r\n", b"OK\r\n", n=2)
+    assert st["garbled"] is False and st["garbled_count"] == 1
+
+
+def test_status_type_error_then_cleared(make):
+    op = Opener()
+    fail = [True]
+
+    def inj(t, s):
+        if fail[0]:
+            raise OSError(5, "SendInput bloqueado (¿aplicación como Administrador?)")
+
+    svc = WedgeService(opener=op, injector=inj, list_fn=lambda: [SCANNER])
+    svc.start()
+    try:
+        wait_until(lambda: svc.state == "conectado")
+        op.conns[0].feed(b"1\r\n")
+        wait_until(lambda: status().get("type_error"))
+        assert "SendInput" in status()["type_error"]
+        fail[0] = False
+        op.conns[0].feed(b"2\r\n")
+        wait_until(lambda: status().get("codes_total") == 2 and status().get("type_error") is None)
+    finally:
+        svc.stop()
+
+
+def test_heartbeat_refreshes_updated_ts(make):
+    svc = make(Opener(), heartbeat=0.05)
+    wait_until(lambda: status().get("updated_ts"))
+    first = status()["updated_ts"]
+    wait_until(lambda: status().get("updated_ts", 0) > first)
+
+
+def test_flow_service_status_evaluar(make):
+    """Servicio -> status.json -> evaluar: todo ✅ si el «teclado» entrega lo mismo; ❌ si no."""
+    from serial_wedge.probador import FALLO, OK, evaluar, resumen
+
+    config.save(Config(prefix="#"))
+    t0 = time.time()
+    op = Opener()
+    svc = make(op)
+    wait_until(lambda: svc.state == "conectado")
+    op.conns[0].feed(b"7501234567890\r\n")
+    wait_until(lambda: svc.typed and status().get("last_typed_at"))
+    texto, suffix = svc.typed[-1]
+    entry_at = time.time()
+    checks = evaluar(status(), texto, suffix == "enter", config.load(), time.time(),
+                     inicio=t0, entry_at=entry_at)
+    assert [c.estado for c in checks[:6]] == [OK] * 6 and resumen(checks) == "Todo correcto ✅"
+    bad = evaluar(status(), texto[:-1], True, config.load(), time.time(), inicio=t0, entry_at=entry_at)
+    assert bad[4].estado == FALLO and "Falta 1 carácter" in bad[4].detalle
