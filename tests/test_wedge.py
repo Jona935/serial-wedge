@@ -94,3 +94,36 @@ def test_never_writes_to_port():
     # FakeConn.write lanza AssertionError; si se llamara, la prueba fallaría.
     typed, _ = run([b"1\r\n", b"2", b""])
     assert [t for t, _ in typed] == ["1", "2"]
+
+
+def frames(chunks):
+    conn = FakeConn(chunks)
+    got, raw = [], []
+    run_wedge(conn, lambda t, s: None, suffix="enter", prefix="",
+              on_frame=lambda code, data, term: got.append((code, data, term)),
+              on_raw=raw.append, should_stop=lambda: conn.done and conn.reads > 50)
+    return got, raw
+
+
+def test_frame_terminators():
+    got, _ = frames([b"A\r\nB\nC\r", b"", b"D", b""])
+    assert got == [("A", b"A\r\n", "CRLF"), ("B", b"B\n", "LF"), ("C", b"C\r", "CR"),
+                   ("D", b"D", "ninguno")]
+
+
+def test_crlf_split_across_reads_is_crlf():
+    got, _ = frames([b"ABC\r", b"\nDEF\r\n"])
+    assert got == [("ABC", b"ABC\r\n", "CRLF"), ("DEF", b"DEF\r\n", "CRLF")]
+
+
+def test_on_raw_gets_every_chunk():
+    _, raw = frames([b"12", b"", b"3\r\n"])
+    assert raw == [b"12", b"3\r\n"]
+
+
+def test_frame_reported_even_if_code_is_blank():
+    conn = FakeConn([b" \t \r\n"])
+    got, typed = [], []
+    run_wedge(conn, lambda t, s: typed.append(t), suffix="enter", prefix="",
+              on_frame=lambda *a: got.append(a), should_stop=lambda: conn.done and conn.reads > 50)
+    assert got == [("", b" \t \r\n", "CRLF")] and typed == []
