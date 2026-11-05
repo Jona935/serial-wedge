@@ -1,6 +1,7 @@
 """Listado de puertos serie y elección del puerto del lector."""
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -20,6 +21,11 @@ def _comports():
 
 def _natural_key(name: str):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
+
+
+def _is_posix_device(name: str) -> bool:
+    """Rutas como /dev/pts/3 o enlaces de socat no aparecen en comports()."""
+    return name.startswith("/") and os.path.exists(name)
 
 
 def list_ports() -> list[PortInfo]:
@@ -42,7 +48,8 @@ def resolve_port(config, list_fn=list_ports) -> tuple[str | None, str]:
         available = list(list_fn())
     except Exception as exc:  # p. ej. permisos al enumerar
         return None, f"no se pudieron listar los puertos: {exc}"
-    if config.port != "auto" and any(p.device == config.port for p in available):
+    if config.port != "auto" and (any(p.device == config.port for p in available)
+                                  or _is_posix_device(config.port)):
         return config.port, f"puerto configurado {config.port}"
     if config.vid is not None and config.pid is not None:
         for p in available:

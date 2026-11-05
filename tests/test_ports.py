@@ -68,3 +68,10 @@ def test_list_ports_natural_sort_and_mapping(monkeypatch):
 def test_label():
     assert ports.label(FTDI) == "COM3 — USB Serial Port (0403:6001)"
     assert ports.label(NATIVE) == "COM1 — Puerto de comunicaciones"
+
+
+def test_posix_device_path_not_listed_but_existing(tmp_path):
+    dev = tmp_path / "ttyFAKE"
+    dev.write_text("")
+    assert resolve_port(Config(port=str(dev)), lister())[0] == str(dev)
+    assert resolve_port(Config(port=str(tmp_path / "nada")), lister())[0] is None
