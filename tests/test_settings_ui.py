@@ -128,3 +128,115 @@ def test_status_when_service_not_running(make):
     w = make(running=False)
     w.poll_status()
     assert "no está en ejecución" in w.state_var.get()
+
+
+# -- Probador ------------------------------------------------------------------
+import time  # noqa: E402
+
+from serial_wedge.injector import WedgeUnavailable  # noqa: E402
+
+CODE = "7501234567890"
+
+
+def write_status(**kw):
+    now = time.time()
+    st = {"state": "conectado", "detail": "COM3 a 9600 baudios", "port": "COM3",
+          "last_code": CODE, "count": 1, "codes_total": 1, "updated_ts": now,
+          "last_code_at": now, "last_frame_at": now, "last_typed_at": now,
+          "last_raw_hex": "37 35 30 31 32 33 34 35 36 37 38 39 30 0d 0a",
+          "last_raw_text": CODE + "\\r\\n", "last_raw_len": 15, "last_terminator": "CRLF",
+          "bytes_total": 15, "garbled": False, "garbled_count": 0, "type_error": None}
+    st.update(kw)
+    config.write_json_atomic(config.config_dir() / "status.json", st)
+
+
+@pytest.fixture
+def probe(root):
+    from serial_wedge.settings_ui import SettingsWindow
+
+    def factory(injector_factory=lambda: (lambda t, s: None)):
+        w = SettingsWindow(root, list_fn=lambda: [FTDI], autostart_fn=lambda e: None,
+                           is_autostart_fn=lambda: False, running_fn=lambda: True, poll_ms=0,
+                           injector_factory=injector_factory)
+        return w, w.probador
+    return factory
+
+
+def row(p, id_):
+    icon, title, detail = (v.get() for v in p.filas[id_])
+    return f"{icon} {title}: {detail}"
+
+
+def test_notebook_tabs(probe):
+    w, _ = probe()
+    assert [w.notebook.tab(t, "text") for t in w.notebook.tabs()] == ["Configuración", "Probador"]
+
+
+def test_probador_waits_for_scan(probe):
+    w, p = probe()
+    p.iniciar()
+    write_status(last_code_at=p.inicio - 5, last_frame_at=p.inicio - 5)
+    p.refresh()
+    assert row(p, "marcha").startswith("✅ Programa en marcha")
+    assert row(p, "datos").startswith("⏳ El lector envía datos")
+    assert p.resumen_var.get().startswith("Esperando")
+
+
+def test_probador_all_ok_when_entry_matches(probe):
+    w, p = probe()
+    p.entry.focus_force()
+    p.entry_var.set(CODE)
+    p.on_final_key("Return")
+    write_status()
+    p.refresh()
+    assert row(p, "teclado") == "✅ El teclado escribe lo mismo: Coincide"
+    assert row(p, "enter").startswith("✅ Enter enviado")
+    assert "15 bytes" in row(p, "datos") and "CRLF" in row(p, "datos")
+    assert p.resumen_var.get() == "Todo correcto ✅"
+    assert p.entry_var.get() == ""  # listo para el siguiente código
+
+
+def test_probador_mismatch_and_garbled(probe):
+    w, p = probe()
+    p.entry_var.set(CODE[:-1])
+    p.on_final_key("Return")
+    write_status(garbled=True, garbled_count=1)
+    p.refresh()
+    assert row(p, "teclado").startswith("❌") and "Falta 1 carácter" in row(p, "teclado")
+    assert row(p, "legibles").startswith("❌ Datos legibles: Se reciben símbolos raros")
+    assert p.resumen_var.get().startswith("Hay 2 problemas")
+
+
+def test_probar_sin_lector_reports_injector_error(probe):
+    def factory():
+        raise WedgeUnavailable("Instale xdotool: sudo apt install xdotool (solo X11)")
+    w, p = probe(injector_factory=factory)
+    write_status()
+    p.probar_sin_lector(delay_ms=None)
+    p.refresh()
+    assert p.sin_lector and row(p, "teclado").startswith("❌") and "xdotool" in row(p, "teclado")
+
+
+def test_probar_sin_lector_uses_injector_and_compares(probe):
+    typed = []
+    w, p = probe(injector_factory=lambda: (lambda t, s: typed.append((t, s))))
+    write_status()
+    p.probar_sin_lector(delay_ms=None)
+    assert typed == [("PRUEBA-123", "enter")]
+    p.entry_var.set("PRUEBA-123")  # lo que el teclado real entregaría al campo
+    p.on_final_key("Return")
+    p.refresh()
+    assert row(p, "teclado") == "✅ El teclado escribe lo mismo: Coincide"
+    assert row(p, "datos").startswith("ℹ")
+
+
+def test_copiar_resultado_without_and_with_codes(probe, root):
+    w, p = probe()
+    p.entry_var.set(CODE)
+    p.on_final_key("Return")
+    write_status()
+    p.refresh()
+    text = p.copiar()
+    assert root.clipboard_get() == text and CODE not in text and "COM" in text
+    p.incluir_var.set(True)
+    assert CODE in p.copiar()

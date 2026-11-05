@@ -7,13 +7,23 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import autostart, config as cfgmod, single
+from .injector import make_injector
 from .ports import label, list_ports
+from .probador_ui import ProbadorPanel
 from .tray import ICON_PATH, status_line
 
 AUTO = "Automático"
 BAUDS = ("1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200")
 PARITY = {"N": "Ninguna (N)", "E": "Par (E)", "O": "Impar (O)", "M": "Marca (M)", "S": "Espacio (S)"}
 SUFFIX = {"enter": "Enter", "tab": "Tab", "none": "Nada"}
+
+
+def read_status() -> dict:
+    try:
+        data = json.loads((cfgmod.config_dir() / "status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _service_running() -> bool:
@@ -26,7 +36,7 @@ def _service_running() -> bool:
 
 class SettingsWindow:
     def __init__(self, root, *, list_fn=list_ports, autostart_fn=None, is_autostart_fn=None,
-                 running_fn=_service_running, poll_ms=1000):
+                 running_fn=_service_running, poll_ms=1000, injector_factory=make_injector):
         self.root, self.list_fn, self.running_fn, self.poll_ms = root, list_fn, running_fn, poll_ms
         self.autostart_fn = autostart_fn or autostart.set_autostart
         is_auto = is_autostart_fn or autostart.is_autostart
@@ -38,8 +48,12 @@ class SettingsWindow:
         except tk.TclError:
             pass
 
-        f = ttk.Frame(root, padding=12)
-        f.grid(sticky="nsew")
+        self.notebook = ttk.Notebook(root)
+        self.notebook.grid(sticky="nsew", padx=6, pady=6)
+        f = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(f, text="Configuración")
+        tester = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(tester, text="Probador")
         self.port_var = tk.StringVar()
         self.baud_var = tk.StringVar(value=str(self.cfg.baud))
         self.bytesize_var = tk.StringVar(value=str(self.cfg.bytesize))
@@ -88,6 +102,8 @@ class SettingsWindow:
 
         self.refresh_ports()
         self.poll_status()
+        self.probador = ProbadorPanel(tester, read_status=read_status, load_config=cfgmod.load,
+                                      injector_factory=injector_factory, poll_ms=poll_ms)
 
     # -- puertos ---------------------------------------------------------
     def refresh_ports(self):
@@ -146,10 +162,7 @@ class SettingsWindow:
             self.state_var.set("El servicio no está en ejecución (abra Pistola Serial)")
             self.code_var.set("")
         else:
-            try:
-                st = json.loads((cfgmod.config_dir() / "status.json").read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                st = {}
+            st = read_status()
             self.state_var.set(status_line(st.get("state", "iniciando"), st.get("detail", "")))
             if st.get("last_code"):
                 self.code_var.set(f"Último código leído: {st['last_code']}  ({st.get('count', 0)} códigos)")
