@@ -48,6 +48,31 @@ encuentra aunque Windows le cambie el número de COM.
   usan los valores por defecto. Los cambios se aplican solos en ~1 s.
 - Solo puede haber una copia en ejecución; abrirlo de nuevo no hace nada.
 
+## Probador: comprobar que todo funciona
+
+1. Clic derecho en el icono → **Configuración…** → pestaña **Probador**.
+2. Pulse **Iniciar prueba**, haga clic en el **campo de prueba** y escanee un código.
+3. Cada fila se marca con ✅ (bien), ❌ (problema) o ⏳ (esperando). Arriba
+   aparece «Todo correcto ✅» o «Hay N problemas» con lo primero que conviene hacer.
+
+El Probador no abre el puerto: lee lo que publica el programa en `status.json`,
+así que se puede usar con el programa funcionando.
+
+| Fila con ❌                    | Qué significa / qué hacer                                                    |
+|-------------------------------|-------------------------------------------------------------------------------|
+| Programa en marcha            | Pistola Serial no está abierta o no responde: ábrala (o reiníciela).          |
+| Puerto encontrado y abierto   | Lector desconectado, puerto equivocado u ocupado por otro programa, o en pausa.|
+| El lector envía datos         | (⏳) No llegó nada: revise cable, puerto y que el lector esté en modo serie.   |
+| Datos legibles                | Llegan símbolos raros: la velocidad (baudios), la paridad o los bits no coinciden con el lector. |
+| El teclado escribe lo mismo   | Lo escrito no coincide (se indica la primera diferencia) o Windows bloqueó la escritura porque la ventana destino corre como Administrador. |
+| Enter enviado                 | No llegó la tecla final: revise «Después del código» (Enter/Tab/Nada).        |
+
+«Rapidez» solo informa los milisegundos entre la lectura y la llegada al campo.
+**Probar sin lector** escribe «PRUEBA-123» en el campo con el mismo método del
+programa, para comprobar el tecleo sin escanear nada. **Copiar resultado** copia
+un informe con los ajustes y cada fila; el contenido de los códigos solo se
+incluye si marca «incluir códigos».
+
 ## Límites
 
 - **Programas como Administrador**: Windows no deja que un programa normal
