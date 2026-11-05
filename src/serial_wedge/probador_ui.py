@@ -10,6 +10,7 @@ from .probador import PRUEBA_SIN_LECTOR, SIMBOLO, evaluar, informe, resumen
 
 FILAS = ["marcha", "puerto", "datos", "legibles", "teclado", "enter", "rapidez"]
 KEYSYM = {"enter": "Return", "tab": "Tab"}
+COLOR = {"ok": "#1e7d32", "fallo": "#c62828", "esperando": "#b26a00", "info": "#555555"}
 
 
 class ProbadorPanel:
@@ -20,12 +21,15 @@ class ProbadorPanel:
         self.chequeos = []
 
         self.resumen_var = tk.StringVar()
-        ttk.Label(parent, textvariable=self.resumen_var, font=("TkDefaultFont", 11, "bold"),
-                  wraplength=520).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
-        self.filas = {}
+        self.resumen_label = ttk.Label(parent, textvariable=self.resumen_var, wraplength=520,
+                                       font=("TkDefaultFont", 11, "bold"))
+        self.resumen_label.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        self.filas, self.iconos = {}, {}
         for i, fid in enumerate(FILAS, start=1):
             vars_ = (tk.StringVar(value=SIMBOLO["esperando"]), tk.StringVar(), tk.StringVar())
-            ttk.Label(parent, textvariable=vars_[0], width=2).grid(row=i, column=0, sticky="nw")
+            self.iconos[fid] = ttk.Label(parent, textvariable=vars_[0], width=2,
+                                         font=("TkDefaultFont", 11, "bold"))
+            self.iconos[fid].grid(row=i, column=0, sticky="nw")
             ttk.Label(parent, textvariable=vars_[1], width=26).grid(row=i, column=1, sticky="nw")
             ttk.Label(parent, textvariable=vars_[2], wraplength=330).grid(row=i, column=2, sticky="nw", pady=1)
             self.filas[fid] = vars_
@@ -112,11 +116,17 @@ class ProbadorPanel:
         for c in self.chequeos:
             icon, title, detail = self.filas[c.id]
             icon.set(SIMBOLO[c.estado])
+            self.iconos[c.id].configure(foreground=COLOR[c.estado])
             title.set(c.titulo)
             text = c.detalle + (f"\n→ {c.accion}" if c.estado == "fallo" and c.accion else "")
             mostrar = c.codigos and (c.estado == "fallo" or c.id == "datos")
             detail.set(text + (f"\n{c.codigos}" if mostrar else ""))
         self.resumen_var.set(resumen(self.chequeos))
+        if self.sin_lector and self.error_local:
+            self.mensaje_var.set("")
+        estados = {c.estado for c in self.chequeos}
+        self.resumen_label.configure(foreground=COLOR["fallo"] if "fallo" in estados else
+                                     COLOR["esperando"] if "esperando" in estados else COLOR["ok"])
         if programar and self.poll_ms:
             self.parent.after(self.poll_ms, lambda: self.refresh(programar=True))
 

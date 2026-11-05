@@ -137,7 +137,7 @@ def evaluar(status: dict, texto_entry: str, enter_visto: bool, config, ahora: fl
     elif err:
         causa = _causa(err)
         accion = ("Ejecute Pistola Serial como Administrador o abra el programa destino sin privilegios"
-                  if causa == ADMIN_MSG else causa)
+                  if causa == ADMIN_MSG else "")
         out.append(Chequeo("teclado", titulo, FALLO, causa, accion))
     else:
         out.append(Chequeo("teclado", titulo, ESPERANDO, "Haga clic en el campo de prueba y escanee"))
